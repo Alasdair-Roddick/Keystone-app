@@ -1,6 +1,13 @@
+export type SessionStepId = 'init' | 'connect' | 'auth' | 'shell'
+
+export type SessionProgressUpdate = {
+  requestId: string
+  step: SessionStepId
+}
+
 export type CreateSessionRequest =
-  | { type: 'local' }
-  | { type: 'remote'; hostId: string }
+  | { type: 'local'; requestId: string }
+  | { type: 'remote'; hostId: string; requestId: string }
 
 export type CreateSessionResponse =
   | { ok: true; sessionId: string }
@@ -54,6 +61,10 @@ export interface KeystoneIPC {
   writeToSession(sessionId: string, data: string): void
   resizeSession(sessionId: string, cols: number, rows: number): void
   closeSession(sessionId: string): void
+
+  onSessionStatus(
+    cb: (update: SessionProgressUpdate) => void
+  ): () => void
 
   onSessionData(
     sessionId: string,

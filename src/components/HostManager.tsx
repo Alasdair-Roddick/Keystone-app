@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Host, CreateHostInput, UpdateHostInput } from '../../packages/shared/contracts/ipc'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Plus, Pencil, Trash2, Server } from 'lucide-react'
 
 type Props = {
   isOpen: boolean
@@ -9,31 +10,6 @@ type Props = {
 }
 
 type EditingHost = Host | 'new' | null
-
-// Icons
-const PlusIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-  </svg>
-)
-
-const EditIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-  </svg>
-)
-
-const TrashIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-  </svg>
-)
-
-const ServerIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
-  </svg>
-)
 
 export default function HostManager({ isOpen, onClose, onHostsChanged }: Props) {
   const [hosts, setHosts] = useState<Host[]>([])
@@ -91,7 +67,7 @@ export default function HostManager({ isOpen, onClose, onHostsChanged }: Props) 
                 className="btn btn-primary btn-sm gap-2"
                 onClick={() => setEditingHost('new')}
               >
-                <PlusIcon />
+                <Plus className="w-4 h-4" />
                 Add Host
               </motion.button>
             </div>
@@ -109,7 +85,7 @@ export default function HostManager({ isOpen, onClose, onHostsChanged }: Props) 
                   className="text-center py-12"
                 >
                   <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-base-200 flex items-center justify-center text-base-content/40">
-                    <ServerIcon />
+                    <Server className="w-8 h-8" />
                   </div>
                   <p className="text-base-content/60 mb-4">No hosts configured yet</p>
                   <button
@@ -132,7 +108,7 @@ export default function HostManager({ isOpen, onClose, onHostsChanged }: Props) 
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                           <div className="p-2.5 rounded-xl bg-secondary/10 text-secondary">
-                            <ServerIcon />
+                            <Server className="w-5 h-5" />
                           </div>
                           <div>
                             <h4 className="font-semibold">{host.name}</h4>
@@ -156,7 +132,7 @@ export default function HostManager({ isOpen, onClose, onHostsChanged }: Props) 
                               className="btn btn-ghost btn-xs btn-square"
                               onClick={() => setEditingHost(host)}
                             >
-                              <EditIcon />
+                              <Pencil className="w-4 h-4" />
                             </motion.button>
                             <motion.button
                               whileHover={{ scale: 1.1 }}
@@ -164,7 +140,7 @@ export default function HostManager({ isOpen, onClose, onHostsChanged }: Props) 
                               className="btn btn-ghost btn-xs btn-square text-error"
                               onClick={() => setDeleteConfirm(host.id)}
                             >
-                              <TrashIcon />
+                              <Trash2 className="w-4 h-4" />
                             </motion.button>
                           </div>
                         </div>

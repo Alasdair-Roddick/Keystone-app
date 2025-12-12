@@ -8,17 +8,24 @@ import type {
   Host,
   CreateHostInput,
   UpdateHostInput,
+  SessionProgressUpdate,
 } from '../packages/shared/contracts/ipc'
 
 // --------------------
 // Validation Schemas
 // --------------------
 
+const RequestIdSchema = z.string().min(1)
+
 const CreateSessionRequestSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('local') }),
+  z.object({
+    type: z.literal('local'),
+    requestId: RequestIdSchema,
+  }),
   z.object({
     type: z.literal('remote'),
     hostId: z.string().min(1),
+    requestId: RequestIdSchema,
   }),
 ])
 
@@ -56,6 +63,20 @@ const keystone: KeystoneIPC = {
     if (!SessionIdSchema.safeParse(sessionId).success) return
 
     ipcRenderer.send('keystone:closeSession', sessionId)
+  },
+
+  onSessionStatus(cb) {
+    const channel = 'keystone:sessionStatus'
+
+    const handler = (_: unknown, data: SessionProgressUpdate) => {
+      cb(data)
+    }
+
+    ipcRenderer.on(channel, handler)
+
+    return () => {
+      ipcRenderer.removeListener(channel, handler)
+    }
   },
 
   onSessionData(sessionId, cb) {

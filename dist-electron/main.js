@@ -1,5 +1,4 @@
 import { app, BrowserWindow, ipcMain } from "electron";
-import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { randomUUID } from "crypto";
@@ -106,7 +105,6 @@ function closeDb() {
     console.log("[db] Database closed");
   }
 }
-createRequire(import.meta.url);
 const __dirname$1 = path.dirname(fileURLToPath(import.meta.url));
 process.env.APP_ROOT = path.join(__dirname$1, "..");
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
@@ -144,117 +142,140 @@ function registerIPC() {
   ipcMain.handle("keystone:createSession", async (_event, req) => {
     console.log("[keystone] createSession request:", req);
     const sessionId = randomUUID();
+    const emitStatus = (step) => {
+      if (!win) return;
+      win.webContents.send("keystone:sessionStatus", {
+        requestId: req.requestId,
+        step
+      });
+    };
+    emitStatus("init");
     let ptyProcess;
     let sshClient;
     let shellChannel;
-    if (req.type === "local") {
-      const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "bash");
-      ptyProcess = pty.spawn(shell, [], {
-        name: "xterm-color",
-        cols: 80,
-        rows: 24,
-        cwd: process.env.HOME,
-        env: process.env
-      });
-    }
-    if (req.type === "remote") {
-      const hostConfig = getHostById(req.hostId);
-      if (!hostConfig) {
-        return { ok: false, error: "Unknown host" };
-      }
-      let password = hostConfig.password;
-      if (!password) {
-        const requestId = randomUUID();
-        if (win) {
-          win.webContents.send("keystone:passwordPrompt", {
-            requestId,
-            host: hostConfig.host,
-            username: hostConfig.username,
-            prompt: "Password"
-          });
-        }
-        password = await new Promise((resolvePassword) => {
-          pendingPasswordPrompts.set(requestId, resolvePassword);
+    try {
+      if (req.type === "local") {
+        const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "bash");
+        ptyProcess = pty.spawn(shell, [], {
+          name: "xterm-color",
+          cols: 80,
+          rows: 24,
+          cwd: process.env.HOME,
+          env: process.env
         });
-        if (password === null) {
-          return { ok: false, error: "Authentication cancelled" };
-        }
+        emitStatus("shell");
       }
-      console.log("[keystone] Connecting to SSH with:", {
-        host: hostConfig.host,
-        port: hostConfig.port,
-        username: hostConfig.username,
-        hasPassword: !!password,
-        passwordLength: password.length
-      });
-      sshClient = new Client();
-      await new Promise((resolve, reject) => {
-        sshClient.on("ready", () => {
-          console.log("[keystone] SSH connection ready");
-          sshClient.shell(
-            {
-              term: "xterm-256color",
-              cols: 80,
-              rows: 24
-            },
-            (err, channel) => {
-              if (err) return reject(err);
-              shellChannel = channel;
-              resolve();
-            }
-          );
-        }).on("keyboard-interactive", (_name, _instructions, _instructionsLang, prompts, finish) => {
-          console.log("[keystone] keyboard-interactive prompts:", prompts);
-          const responses = prompts.map(() => password);
-          finish(responses);
-        }).on("error", (err) => {
-          console.error("[keystone] SSH error:", err.message, err.level);
-          reject(err);
-        }).connect({
+      if (req.type === "remote") {
+        const hostConfig = getHostById(req.hostId);
+        if (!hostConfig) {
+          return { ok: false, error: "Unknown host" };
+        }
+        emitStatus("connect");
+        let password = hostConfig.password;
+        if (!password) {
+          const requestId = randomUUID();
+          if (win) {
+            win.webContents.send("keystone:passwordPrompt", {
+              requestId,
+              host: hostConfig.host,
+              username: hostConfig.username,
+              prompt: "Password"
+            });
+          }
+          password = await new Promise((resolvePassword) => {
+            pendingPasswordPrompts.set(requestId, resolvePassword);
+          });
+          if (password === null) {
+            return { ok: false, error: "Authentication cancelled" };
+          }
+        }
+        console.log("[keystone] Connecting to SSH with:", {
           host: hostConfig.host,
           port: hostConfig.port,
           username: hostConfig.username,
-          password,
-          tryKeyboard: true,
-          debug: (msg) => console.log("[ssh2]", msg)
+          hasPassword: !!password,
+          passwordLength: password.length
         });
-      });
+        sshClient = new Client();
+        await new Promise((resolve, reject) => {
+          sshClient.on("ready", () => {
+            console.log("[keystone] SSH connection ready");
+            emitStatus("auth");
+            sshClient.shell(
+              {
+                term: "xterm-256color",
+                cols: 80,
+                rows: 24
+              },
+              (err, channel) => {
+                if (err) return reject(err);
+                shellChannel = channel;
+                emitStatus("shell");
+                resolve();
+              }
+            );
+          }).on("keyboard-interactive", (_name, _instructions, _instructionsLang, prompts, finish) => {
+            console.log("[keystone] keyboard-interactive prompts:", prompts);
+            const responses = prompts.map(() => password);
+            finish(responses);
+          }).on("error", (err) => {
+            console.error("[keystone] SSH error:", err.message, err.level);
+            reject(err);
+          }).connect({
+            host: hostConfig.host,
+            port: hostConfig.port,
+            username: hostConfig.username,
+            password,
+            tryKeyboard: true,
+            debug: (msg) => console.log("[ssh2]", msg)
+          });
+        });
+      }
+      const session = {
+        id: sessionId,
+        type: req.type,
+        hostId: req.type === "remote" ? req.hostId : void 0,
+        createdAt: Date.now(),
+        pty: ptyProcess,
+        ssh: sshClient,
+        shell: shellChannel
+      };
+      sessions.set(sessionId, session);
+      if (ptyProcess && win) {
+        ptyProcess.onData((data) => {
+          win.webContents.send(
+            `keystone:sessionData:${sessionId}`,
+            data
+          );
+        });
+      }
+      if (shellChannel && win) {
+        shellChannel.on("data", (data) => {
+          win.webContents.send(
+            `keystone:sessionData:${sessionId}`,
+            data.toString()
+          );
+        });
+        shellChannel.stderr.on("data", (data) => {
+          win.webContents.send(
+            `keystone:sessionData:${sessionId}`,
+            data.toString()
+          );
+        });
+      }
+      console.log("[keystone] session created:", session);
+      await new Promise((r) => setTimeout(r, 300));
+      return { ok: true, sessionId };
+    } catch (err) {
+      console.error("[keystone] failed to create session:", err);
+      ptyProcess == null ? void 0 : ptyProcess.kill();
+      shellChannel == null ? void 0 : shellChannel.close();
+      sshClient == null ? void 0 : sshClient.end();
+      return {
+        ok: false,
+        error: err instanceof Error && err.message ? err.message : "Failed to create session"
+      };
     }
-    const session = {
-      id: sessionId,
-      type: req.type,
-      hostId: req.type === "remote" ? req.hostId : void 0,
-      createdAt: Date.now(),
-      pty: ptyProcess,
-      ssh: sshClient,
-      shell: shellChannel
-    };
-    sessions.set(sessionId, session);
-    if (ptyProcess && win) {
-      ptyProcess.onData((data) => {
-        win.webContents.send(
-          `keystone:sessionData:${sessionId}`,
-          data
-        );
-      });
-    }
-    if (shellChannel && win) {
-      shellChannel.on("data", (data) => {
-        win.webContents.send(
-          `keystone:sessionData:${sessionId}`,
-          data.toString()
-        );
-      });
-      shellChannel.stderr.on("data", (data) => {
-        win.webContents.send(
-          `keystone:sessionData:${sessionId}`,
-          data.toString()
-        );
-      });
-    }
-    console.log("[keystone] session created:", session);
-    await new Promise((r) => setTimeout(r, 300));
-    return { ok: true, sessionId };
   });
   ipcMain.on("keystone:write", (_event, { sessionId, data }) => {
     const session = sessions.get(sessionId);

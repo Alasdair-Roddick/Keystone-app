@@ -6,11 +6,12 @@ import { useSessionStore } from './state/session'
 
 export default function App() {
   const status = useSessionStore((s) => s.status)
+  const showLoading = status === 'creating' || status === 'error'
 
   return (
     <>
       <PasswordModal />
-      {status === 'creating' && <Loading />}
+      {showLoading && <Loading />}
       {status === 'active' && <Session />}
       {status === 'idle' && <Home />}
     </>

@@ -1,5 +1,4 @@
 import { app, BrowserWindow } from 'electron'
-import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { ipcMain } from 'electron'
@@ -8,6 +7,7 @@ import type { IPty } from 'node-pty'
 import pty from 'node-pty'
 import { Client } from 'ssh2'
 import type { ClientChannel } from 'ssh2'
+import type { CreateSessionRequest, SessionStepId } from '../packages/shared/contracts/ipc'
 import {
   getDb,
   closeDb,
@@ -21,7 +21,6 @@ import {
 
 
 
-const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // The built directory structure
@@ -105,154 +104,184 @@ app.on('activate', () => {
 })
 
 function registerIPC() {
-  ipcMain.handle('keystone:createSession', async (_event, req) => {
-  console.log('[keystone] createSession request:', req)
+  ipcMain.handle('keystone:createSession', async (_event, req: CreateSessionRequest) => {
+    console.log('[keystone] createSession request:', req)
 
-  const sessionId = randomUUID()
-
-  let ptyProcess: pty.IPty | undefined
-  let sshClient: Client | undefined
-  let shellChannel: ClientChannel | undefined
-
-  // ---------- LOCAL SESSION ----------
-  if (req.type === 'local') {
-    const shell =
-      process.env.SHELL ||
-      (process.platform === 'win32' ? 'powershell.exe' : 'bash')
-
-    ptyProcess = pty.spawn(shell, [], {
-      name: 'xterm-color',
-      cols: 80,
-      rows: 24,
-      cwd: process.env.HOME,
-      env: process.env,
-    })
-  }
-
-  // ---------- REMOTE (SSH) SESSION ----------
-  if (req.type === 'remote') {
-    const hostConfig = getHostById(req.hostId)
-    if (!hostConfig) {
-      return { ok: false, error: 'Unknown host' }
-    }
-
-    let password = hostConfig.password
-
-    // Prompt for password only if not stored
-    if (!password) {
-      const requestId = randomUUID()
-
-      if (win) {
-        win.webContents.send('keystone:passwordPrompt', {
-          requestId,
-          host: hostConfig.host,
-          username: hostConfig.username,
-          prompt: 'Password',
-        })
-      }
-
-      password = await new Promise<string | null>((resolvePassword) => {
-        pendingPasswordPrompts.set(requestId, resolvePassword)
+    const sessionId = randomUUID()
+    const emitStatus = (step: SessionStepId) => {
+      if (!win) return
+      win.webContents.send('keystone:sessionStatus', {
+        requestId: req.requestId,
+        step,
       })
-
-      if (password === null) {
-        return { ok: false, error: 'Authentication cancelled' }
-      }
     }
 
-    console.log('[keystone] Connecting to SSH with:', {
-      host: hostConfig.host,
-      port: hostConfig.port,
-      username: hostConfig.username,
-      hasPassword: !!password,
-      passwordLength: password.length,
-    })
+    emitStatus('init')
 
-    sshClient = new Client()
+    let ptyProcess: pty.IPty | undefined
+    let sshClient: Client | undefined
+    let shellChannel: ClientChannel | undefined
 
-    await new Promise<void>((resolve, reject) => {
-      sshClient!
-        .on('ready', () => {
-          console.log('[keystone] SSH connection ready')
-          sshClient!.shell(
-            {
-              term: 'xterm-256color',
-              cols: 80,
-              rows: 24,
-            },
-            (err, channel) => {
-              if (err) return reject(err)
-              shellChannel = channel
-              resolve()
-            }
-          )
+    try {
+      // ---------- LOCAL SESSION ----------
+      if (req.type === 'local') {
+        const shell =
+          process.env.SHELL ||
+          (process.platform === 'win32' ? 'powershell.exe' : 'bash')
+
+        ptyProcess = pty.spawn(shell, [], {
+          name: 'xterm-color',
+          cols: 80,
+          rows: 24,
+          cwd: process.env.HOME,
+          env: process.env,
         })
-        .on('keyboard-interactive', (_name, _instructions, _instructionsLang, prompts, finish) => {
-          console.log('[keystone] keyboard-interactive prompts:', prompts)
-          const responses = prompts.map(() => password!)
-          finish(responses)
-        })
-        .on('error', (err) => {
-          console.error('[keystone] SSH error:', err.message, err.level)
-          reject(err)
-        })
-        .connect({
+
+        emitStatus('shell')
+      }
+
+      // ---------- REMOTE (SSH) SESSION ----------
+      if (req.type === 'remote') {
+        const hostConfig = getHostById(req.hostId)
+        if (!hostConfig) {
+          return { ok: false, error: 'Unknown host' }
+        }
+
+        emitStatus('connect')
+
+        let password = hostConfig.password
+
+        // Prompt for password only if not stored
+        if (!password) {
+          const requestId = randomUUID()
+
+          if (win) {
+            win.webContents.send('keystone:passwordPrompt', {
+              requestId,
+              host: hostConfig.host,
+              username: hostConfig.username,
+              prompt: 'Password',
+            })
+          }
+
+          password = await new Promise<string | null>((resolvePassword) => {
+            pendingPasswordPrompts.set(requestId, resolvePassword)
+          })
+
+          if (password === null) {
+            return { ok: false, error: 'Authentication cancelled' }
+          }
+        }
+
+        console.log('[keystone] Connecting to SSH with:', {
           host: hostConfig.host,
           port: hostConfig.port,
           username: hostConfig.username,
-          password,
-          tryKeyboard: true,
-          debug: (msg) => console.log('[ssh2]', msg),
+          hasPassword: !!password,
+          passwordLength: password.length,
         })
-    })
-  }
 
-  // ---------- SESSION OBJECT ----------
-  const session: Session = {
-    id: sessionId,
-    type: req.type,
-    hostId: req.type === 'remote' ? req.hostId : undefined,
-    createdAt: Date.now(),
-    pty: ptyProcess,
-    ssh: sshClient,
-    shell: shellChannel,
-  }
+        sshClient = new Client()
 
-  sessions.set(sessionId, session)
+        await new Promise<void>((resolve, reject) => {
+          sshClient!
+            .on('ready', () => {
+              console.log('[keystone] SSH connection ready')
+              emitStatus('auth')
+              sshClient!.shell(
+                {
+                  term: 'xterm-256color',
+                  cols: 80,
+                  rows: 24,
+                },
+                (err, channel) => {
+                  if (err) return reject(err)
+                  shellChannel = channel
+                  emitStatus('shell')
+                  resolve()
+                }
+              )
+            })
+            .on('keyboard-interactive', (_name, _instructions, _instructionsLang, prompts, finish) => {
+              console.log('[keystone] keyboard-interactive prompts:', prompts)
+              const responses = prompts.map(() => password!)
+              finish(responses)
+            })
+            .on('error', (err) => {
+              console.error('[keystone] SSH error:', err.message, err.level)
+              reject(err)
+            })
+            .connect({
+              host: hostConfig.host,
+              port: hostConfig.port,
+              username: hostConfig.username,
+              password,
+              tryKeyboard: true,
+              debug: (msg) => console.log('[ssh2]', msg),
+            })
+        })
+      }
 
-  // ---------- STREAM OUTPUT ----------
-  if (ptyProcess && win) {
-    ptyProcess.onData((data) => {
-      win!.webContents.send(
-        `keystone:sessionData:${sessionId}`,
-        data
-      )
-    })
-  }
+      // ---------- SESSION OBJECT ----------
+      const session: Session = {
+        id: sessionId,
+        type: req.type,
+        hostId: req.type === 'remote' ? req.hostId : undefined,
+        createdAt: Date.now(),
+        pty: ptyProcess,
+        ssh: sshClient,
+        shell: shellChannel,
+      }
 
-  if (shellChannel && win) {
-    shellChannel.on('data', (data: Buffer) => {
-      win!.webContents.send(
-        `keystone:sessionData:${sessionId}`,
-        data.toString()
-      )
-    })
+      sessions.set(sessionId, session)
 
-    shellChannel.stderr.on('data', (data: Buffer) => {
-      win!.webContents.send(
-        `keystone:sessionData:${sessionId}`,
-        data.toString()
-      )
-    })
-  }
+      // ---------- STREAM OUTPUT ----------
+      if (ptyProcess && win) {
+        ptyProcess.onData((data) => {
+          win!.webContents.send(
+            `keystone:sessionData:${sessionId}`,
+            data
+          )
+        })
+      }
 
-  console.log('[keystone] session created:', session)
+      if (shellChannel && win) {
+        shellChannel.on('data', (data: Buffer) => {
+          win!.webContents.send(
+            `keystone:sessionData:${sessionId}`,
+            data.toString()
+          )
+        })
 
-  // Optional delay for loading screen polish
-  await new Promise((r) => setTimeout(r, 300))
+        shellChannel.stderr.on('data', (data: Buffer) => {
+          win!.webContents.send(
+            `keystone:sessionData:${sessionId}`,
+            data.toString()
+          )
+        })
+      }
 
-  return { ok: true, sessionId }
-})
+      console.log('[keystone] session created:', session)
+
+      // Optional delay for loading screen polish
+      await new Promise((r) => setTimeout(r, 300))
+
+      return { ok: true, sessionId }
+    } catch (err) {
+      console.error('[keystone] failed to create session:', err)
+      ptyProcess?.kill()
+      shellChannel?.close()
+      sshClient?.end()
+
+      return {
+        ok: false,
+        error:
+          err instanceof Error && err.message
+            ? err.message
+            : 'Failed to create session',
+      }
+    }
+  })
 
 
 ipcMain.on('keystone:write', (_event, { sessionId, data }) => {

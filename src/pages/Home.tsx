@@ -1,40 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useSessionStore } from '../state/session'
+import { useSettingsStore } from '../state/settings'
 import HostManager from '../components/HostManager'
+import SettingsModal from '../components/SettingsModal'
 import type { Host } from '../../packages/shared/contracts/ipc'
 import { motion, AnimatePresence } from 'framer-motion'
-
-// Icons as simple SVG components
-const TerminalIcon = () => (
-  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-  </svg>
-)
-
-const ServerIcon = () => (
-  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
-  </svg>
-)
-
-const PlusIcon = () => (
-  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
-  </svg>
-)
-
-const SettingsIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-  </svg>
-)
-
-const SignalIcon = ({ connected }: { connected?: boolean }) => (
-  <svg className={`w-4 h-4 ${connected ? 'text-success' : 'text-base-content/30'}`} fill="currentColor" viewBox="0 0 24 24">
-    <circle cx="12" cy="12" r="3" />
-  </svg>
-)
+import { Terminal, Server, Plus, Settings, Circle } from 'lucide-react'
 
 // Animation variants
 const containerVariants = {
@@ -53,13 +24,13 @@ const itemVariants = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: { type: 'spring', stiffness: 300, damping: 24 },
+    transition: { type: 'spring' as const, stiffness: 300, damping: 24 },
   },
 }
 
 const cardHover = {
   scale: 1.02,
-  transition: { type: 'spring', stiffness: 400, damping: 17 },
+  transition: { type: 'spring' as const, stiffness: 400, damping: 17 },
 }
 
 const cardTap = {
@@ -69,10 +40,17 @@ const cardTap = {
 export default function Home() {
   const startLocal = useSessionStore((s) => s.startLocal)
   const startRemote = useSessionStore((s) => s.startRemote)
+  
+  // Initialize theme on mount
+  const theme = useSettingsStore((s) => s.theme)
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [theme])
 
   const [hosts, setHosts] = useState<Host[]>([])
   const [loading, setLoading] = useState(true)
   const [managerOpen, setManagerOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const loadHosts = async () => {
     setLoading(true)
@@ -101,11 +79,11 @@ export default function Home() {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.5 }}
         className="absolute top-6 right-6 btn btn-ghost btn-circle"
-        onClick={() => setManagerOpen(true)}
+        onClick={() => setSettingsOpen(true)}
         whileHover={{ rotate: 90 }}
         whileTap={{ scale: 0.9 }}
       >
-        <SettingsIcon />
+        <Settings className="w-5 h-5" />
       </motion.button>
 
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center px-6 py-12">
@@ -169,9 +147,9 @@ export default function Home() {
               <div className="relative p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="p-3 rounded-xl bg-primary/10 text-primary">
-                    <TerminalIcon />
+                    <Terminal className="w-8 h-8" />
                   </div>
-                  <SignalIcon connected />
+                  <Circle className="w-3 h-3 fill-success text-success" />
                 </div>
                 <h3 className="text-lg font-semibold mb-1">Local Terminal</h3>
                 <p className="text-sm text-base-content/60">
@@ -219,13 +197,13 @@ export default function Home() {
                     <div className="relative p-6">
                       <div className="flex items-start justify-between mb-4">
                         <div className="p-3 rounded-xl bg-secondary/10 text-secondary">
-                          <ServerIcon />
+                          <Server className="w-8 h-8" />
                         </div>
                         <div className="flex items-center gap-2">
                           {host.password && (
                             <span className="badge badge-ghost badge-xs">🔒</span>
                           )}
-                          <SignalIcon />
+                          <Circle className="w-3 h-3 text-base-content/30" />
                         </div>
                       </div>
                       <h3 className="text-lg font-semibold mb-1 truncate">{host.name}</h3>
@@ -268,7 +246,7 @@ export default function Home() {
                   whileHover={{ rotate: 90 }}
                   transition={{ type: 'spring', stiffness: 300 }}
                 >
-                  <PlusIcon />
+                  <Plus className="w-8 h-8" />
                 </motion.div>
                 <h3 className="mt-4 text-base font-medium text-base-content/60 group-hover:text-base-content transition-colors">
                   Add SSH Host
@@ -298,6 +276,12 @@ export default function Home() {
             >
               Manage Hosts
             </button>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="btn btn-ghost btn-sm text-base-content/50 hover:text-base-content"
+            >
+              Settings
+            </button>
           </div>
         </motion.footer>
       </div>
@@ -307,6 +291,12 @@ export default function Home() {
         isOpen={managerOpen}
         onClose={() => setManagerOpen(false)}
         onHostsChanged={loadHosts}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
       />
     </div>
   )

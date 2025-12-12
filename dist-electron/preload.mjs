@@ -3079,11 +3079,16 @@ function refine(fn, _params = {}) {
 function superRefine(fn) {
   return _superRefine(fn);
 }
+const RequestIdSchema = string().min(1);
 const CreateSessionRequestSchema = discriminatedUnion("type", [
-  object({ type: literal("local") }),
+  object({
+    type: literal("local"),
+    requestId: RequestIdSchema
+  }),
   object({
     type: literal("remote"),
-    hostId: string().min(1)
+    hostId: string().min(1),
+    requestId: RequestIdSchema
   })
 ]);
 const SessionIdSchema = string().min(1);
@@ -3108,6 +3113,16 @@ const keystone = {
   closeSession(sessionId) {
     if (!SessionIdSchema.safeParse(sessionId).success) return;
     electron.ipcRenderer.send("keystone:closeSession", sessionId);
+  },
+  onSessionStatus(cb) {
+    const channel = "keystone:sessionStatus";
+    const handler = (_, data) => {
+      cb(data);
+    };
+    electron.ipcRenderer.on(channel, handler);
+    return () => {
+      electron.ipcRenderer.removeListener(channel, handler);
+    };
   },
   onSessionData(sessionId, cb) {
     if (!SessionIdSchema.safeParse(sessionId).success) {

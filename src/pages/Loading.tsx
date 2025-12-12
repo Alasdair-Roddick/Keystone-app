@@ -1,49 +1,102 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSessionStore } from '../state/session'
 import { motion } from 'framer-motion'
+import { Terminal, Wifi, Shield, CheckCircle2, XCircle, ArrowLeft, Loader2 } from 'lucide-react'
+import type { SessionStepId } from '../../packages/shared/contracts/ipc'
 
-const steps = [
-  'Initializing...',
-  'Establishing connection...',
-  'Authenticating...',
-  'Starting shell...',
+type Step = {
+  id: SessionStepId
+  label: string
+  icon: typeof Terminal
+}
+
+const localSteps: Step[] = [
+  { id: 'init', label: 'Initializing', icon: Terminal },
+  { id: 'shell', label: 'Starting shell', icon: CheckCircle2 },
 ]
+
+const remoteSteps: Step[] = [
+  { id: 'init', label: 'Initializing', icon: Terminal },
+  { id: 'connect', label: 'Connecting', icon: Wifi },
+  { id: 'auth', label: 'Authenticating', icon: Shield },
+  { id: 'shell', label: 'Starting shell', icon: CheckCircle2 },
+]
+
+const generateRequestId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return Math.random().toString(36).slice(2)
+}
 
 export default function Loading() {
   const target = useSessionStore((s) => s.target)
   const setActive = useSessionStore((s) => s.setActive)
   const setError = useSessionStore((s) => s.setError)
   const reset = useSessionStore((s) => s.reset)
-  const [step, setStep] = useState(0)
+  const [currentStep, setCurrentStep] = useState(0)
   const [failed, setFailed] = useState<string | null>(null)
+  const requestId = useMemo(() => {
+    const fingerprint =
+      target?.type === 'remote'
+        ? `${target.type}:${target.hostId}`
+        : target?.type ?? 'none'
+    return `${fingerprint}:${generateRequestId()}`
+  }, [target])
+
+  const isRemote = target?.type === 'remote'
+  const steps = isRemote ? remoteSteps : localSteps
 
   useEffect(() => {
-    // Animate through steps
-    const interval = setInterval(() => {
-      setStep((s) => (s < steps.length - 1 ? s + 1 : s))
-    }, 800)
-    return () => clearInterval(interval)
-  }, [])
+    setCurrentStep(0)
+    setFailed(null)
+  }, [target, isRemote])
 
   useEffect(() => {
+    const unsubscribe = window.keystone.onSessionStatus((update) => {
+      if (update.requestId !== requestId) return
+
+      const index = steps.findIndex((step) => step.id === update.step)
+      if (index === -1) return
+      setCurrentStep((prev) => (index > prev ? index : prev))
+    })
+
+    return unsubscribe
+  }, [requestId, steps])
+
+  useEffect(() => {
+    if (!target) return
+
     let cancelled = false
 
     async function create() {
-      if (!target) return
+      try {
+        const res = await window.keystone.createSession(
+          target.type === 'local'
+            ? { type: 'local', requestId }
+            : { type: 'remote', hostId: target.hostId, requestId }
+        )
 
-      const res = await window.keystone.createSession(
-        target.type === 'local'
-          ? { type: 'local' }
-          : { type: 'remote', hostId: target.hostId }
-      )
+        if (cancelled) return
 
-      if (cancelled) return
-
-      if (res.ok) {
-        setActive(res.sessionId)
-      } else {
-        setFailed(res.error)
-        setError(res.error)
+        if (res.ok) {
+          setCurrentStep(steps.length - 1)
+          // Brief delay to show completion before transitioning
+          setTimeout(() => {
+            if (!cancelled) setActive(res.sessionId)
+          }, 300)
+        } else {
+          setFailed(res.error)
+          setError(res.error)
+        }
+      } catch (err) {
+        if (cancelled) return
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : 'Failed to create session'
+        setFailed(message)
+        setError(message)
       }
     }
 
@@ -52,9 +105,7 @@ export default function Loading() {
     return () => {
       cancelled = true
     }
-  }, [target, setActive, setError])
-
-  const isRemote = target?.type === 'remote'
+  }, [target, requestId, setActive, setError, steps.length])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-base-300 via-base-200 to-base-300 relative overflow-hidden">
@@ -81,73 +132,102 @@ export default function Loading() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative z-10 text-center px-6"
+        className="relative z-10 w-full max-w-md px-6"
       >
         {failed ? (
           // Error state
           <motion.div
             initial={{ scale: 0.9 }}
             animate={{ scale: 1 }}
-            className="flex flex-col items-center"
+            className="bg-base-100 rounded-2xl shadow-2xl p-8"
           >
-            <div className="w-20 h-20 rounded-full bg-error/10 flex items-center justify-center mb-6">
-              <svg className="w-10 h-10 text-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-full bg-error/10 flex items-center justify-center mb-6">
+                <XCircle className="w-8 h-8 text-error" />
+              </div>
+              <h2 className="text-xl font-semibold mb-2">Connection Failed</h2>
+              <p className="text-base-content/60 mb-6">{failed}</p>
+              <button onClick={reset} className="btn btn-primary gap-2">
+                <ArrowLeft className="w-4 h-4" />
+                Back to Home
+              </button>
             </div>
-            <h2 className="text-xl font-semibold mb-2">Connection Failed</h2>
-            <p className="text-base-content/60 mb-6 max-w-sm">{failed}</p>
-            <button onClick={reset} className="btn btn-primary">
-              Back to Home
-            </button>
           </motion.div>
         ) : (
-          // Loading state
-          <>
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-              className="w-20 h-20 mx-auto mb-8 rounded-2xl bg-base-100 shadow-xl flex items-center justify-center"
-            >
+          // Loading state with DaisyUI steps
+          <div className="bg-base-100 rounded-2xl shadow-2xl p-8">
+            {/* Header */}
+            <div className="text-center mb-8">
               <motion.div
-                animate={{ scale: [1, 1.1, 1] }}
-                transition={{ duration: 1, repeat: Infinity }}
-                className={`text-3xl`}
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-primary/10 flex items-center justify-center"
               >
-                {isRemote ? '🔌' : '💻'}
+                <Loader2 className="w-8 h-8 text-primary" />
               </motion.div>
-            </motion.div>
-
-            <h2 className="text-2xl font-bold mb-2">
-              {isRemote ? `Connecting to ${target.name}` : 'Starting Local Session'}
-            </h2>
-
-            <div className="h-6 mb-8">
-              <motion.p
-                key={step}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="text-base-content/60"
-              >
-                {isRemote ? steps[step] : steps[Math.min(step, 1)]}
-              </motion.p>
+              <h2 className="text-xl font-bold">
+                {isRemote ? `Connecting to ${target?.name}` : 'Starting Local Session'}
+              </h2>
             </div>
 
-            {/* Progress dots */}
-            <div className="flex justify-center gap-2">
-              {(isRemote ? steps : steps.slice(0, 2)).map((_, i) => (
-                <motion.div
-                  key={i}
-                  className={`w-2 h-2 rounded-full ${
-                    i <= step ? 'bg-primary' : 'bg-base-content/20'
-                  }`}
-                  animate={i === step ? { scale: [1, 1.3, 1] } : {}}
-                  transition={{ duration: 0.5, repeat: Infinity }}
-                />
-              ))}
+            {/* DaisyUI Steps - Vertical */}
+            <ul className="steps steps-vertical w-full">
+              {steps.map((step, index) => {
+                const Icon = step.icon
+                const isComplete = index < currentStep
+                const isCurrent = index === currentStep
+                const isPending = index > currentStep
+
+                return (
+                  <li
+                    key={step.id}
+                    className={`step ${isComplete || isCurrent ? 'step-primary' : ''}`}
+                    data-content={isComplete ? '✓' : undefined}
+                  >
+                    <div className="flex items-center gap-3 py-2">
+                      <div className={`
+                        p-2 rounded-lg transition-colors
+                        ${isComplete ? 'bg-primary/10 text-primary' : ''}
+                        ${isCurrent ? 'bg-primary/20 text-primary' : ''}
+                        ${isPending ? 'bg-base-200 text-base-content/30' : ''}
+                      `}>
+                        {isCurrent ? (
+                          <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                          >
+                            <Loader2 className="w-4 h-4" />
+                          </motion.div>
+                        ) : (
+                          <Icon className="w-4 h-4" />
+                        )}
+                      </div>
+                      <span className={`
+                        font-medium transition-colors
+                        ${isComplete ? 'text-primary' : ''}
+                        ${isCurrent ? 'text-base-content' : ''}
+                        ${isPending ? 'text-base-content/40' : ''}
+                      `}>
+                        {step.label}
+                        {isCurrent && (
+                          <span className="loading loading-dots loading-xs ml-2"></span>
+                        )}
+                      </span>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+
+            {/* Progress bar */}
+            <div className="mt-6">
+              <progress
+                className="progress progress-primary w-full"
+                value={(currentStep + 1) * (100 / steps.length)}
+                max="100"
+              ></progress>
             </div>
-          </>
+          </div>
         )}
       </motion.div>
     </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { KeyRound } from 'lucide-react'
 
 type PasswordPrompt = {
   requestId: string
@@ -7,12 +8,6 @@ type PasswordPrompt = {
   username: string
   prompt: string
 }
-
-const KeyIcon = () => (
-  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-  </svg>
-)
 
 export default function PasswordModal() {
   const [promptData, setPromptData] = useState<PasswordPrompt | null>(null)
@@ -75,7 +70,7 @@ export default function PasswordModal() {
             {/* Header */}
             <div className="p-6 text-center border-b border-base-300">
               <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                <KeyIcon />
+                <KeyRound className="w-8 h-8" />
               </div>
               <h3 className="text-xl font-bold">SSH Authentication</h3>
               <p className="text-sm text-base-content/60 mt-2 font-mono">

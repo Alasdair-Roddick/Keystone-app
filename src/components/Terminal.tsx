@@ -19,10 +19,12 @@ function getCssVarAsHex(varName: string, fallback: string): string {
   if (!value) return fallback
   
   try {
-    // Try to parse the color (supports oklch, hsl, rgb, hex)
+    // DaisyUI 5 uses oklch format: e.g. "oklch(0.25 0.01 260)"
+    // Try to parse the color (culori supports oklch, hsl, rgb, hex)
     const parsed = parse(value)
     if (parsed) {
-      return formatHex(parsed) || fallback
+      const hex = formatHex(parsed)
+      if (hex) return hex
     }
   } catch {
     // Fall back if parsing fails
@@ -32,23 +34,36 @@ function getCssVarAsHex(varName: string, fallback: string): string {
 }
 
 // Build xterm theme from DaisyUI CSS variables
+// DaisyUI 5 uses: --color-base-100, --color-base-content, --color-primary, etc.
 function buildTheme() {
+  // Get theme colors from DaisyUI CSS variables
+  const base100 = getCssVarAsHex('--color-base-100', '#1d232a')
+  const baseContent = getCssVarAsHex('--color-base-content', '#a6adbb')
+  const primary = getCssVarAsHex('--color-primary', '#7c3aed')
+  const base300 = getCssVarAsHex('--color-base-300', '#1c1c1c')
+  const success = getCssVarAsHex('--color-success', '#4ade80')
+  const error = getCssVarAsHex('--color-error', '#f87171')
+  const warning = getCssVarAsHex('--color-warning', '#facc15')
+  const info = getCssVarAsHex('--color-info', '#60a5fa')
+  const secondary = getCssVarAsHex('--color-secondary', '#c084fc')
+  const accent = getCssVarAsHex('--color-accent', '#22d3ee')
+  
   return {
-    background: getCssVarAsHex('--b1', '#1d232a'),
-    foreground: getCssVarAsHex('--bc', '#a6adbb'),
-    cursor: getCssVarAsHex('--p', '#7c3aed'),
-    cursorAccent: getCssVarAsHex('--b1', '#1d232a'),
-    selectionBackground: getCssVarAsHex('--p', '#7c3aed') + '40',
-    selectionForeground: getCssVarAsHex('--bc', '#a6adbb'),
-    // ANSI colors
-    black: getCssVarAsHex('--b3', '#1c1c1c'),
-    red: '#f87171',
-    green: '#4ade80',
-    yellow: '#facc15',
-    blue: '#60a5fa',
-    magenta: '#c084fc',
-    cyan: '#22d3ee',
-    white: getCssVarAsHex('--bc', '#a6adbb'),
+    background: base100,
+    foreground: baseContent,
+    cursor: primary,
+    cursorAccent: base100,
+    selectionBackground: primary + '40',
+    selectionForeground: baseContent,
+    // ANSI colors mapped to DaisyUI theme
+    black: base300,
+    red: error,
+    green: success,
+    yellow: warning,
+    blue: info,
+    magenta: secondary,
+    cyan: accent,
+    white: baseContent,
     brightBlack: '#6b7280',
     brightRed: '#fca5a5',
     brightGreen: '#86efac',
@@ -65,6 +80,24 @@ export default function Terminal({ sessionId }: Props) {
   const termRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const [isReady, setIsReady] = useState(false)
+
+  // Watch for theme changes and update terminal colors
+  useEffect(() => {
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'data-theme' && termRef.current) {
+          // Small delay to let CSS variables update
+          setTimeout(() => {
+            termRef.current!.options.theme = buildTheme()
+          }, 50)
+        }
+      })
+    })
+
+    observer.observe(document.documentElement, { attributes: true })
+
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     if (!containerRef.current) return

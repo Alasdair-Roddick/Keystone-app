@@ -2,31 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSessionStore } from '../state/session'
 import Terminal from '../components/Terminal'
 import { motion, AnimatePresence } from 'framer-motion'
-
-// Icons
-const HomeIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-  </svg>
-)
-
-const TerminalIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-  </svg>
-)
-
-const ServerIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
-  </svg>
-)
-
-const XIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-  </svg>
-)
+import { Home, Terminal as TerminalIcon, Server, X } from 'lucide-react'
 
 const SignalIcon = () => (
   <span className="relative flex h-2 w-2">
@@ -99,14 +75,14 @@ export default function Session() {
             className="btn btn-ghost btn-sm btn-square"
             title="Back to home"
           >
-            <HomeIcon />
+            <Home className="w-4 h-4" />
           </motion.button>
 
           <div className="h-6 w-px bg-base-300" />
 
           <div className="flex items-center gap-2">
             <div className={`p-1.5 rounded-lg ${isRemote ? 'bg-secondary/10 text-secondary' : 'bg-primary/10 text-primary'}`}>
-              {isRemote ? <ServerIcon /> : <TerminalIcon />}
+              {isRemote ? <Server className="w-4 h-4" /> : <TerminalIcon className="w-4 h-4" />}
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-medium leading-tight">{sessionName}</span>
@@ -135,7 +111,7 @@ export default function Session() {
             onClick={handleClose}
             className="btn btn-ghost btn-sm gap-2"
           >
-            <XIcon />
+            <X className="w-4 h-4" />
             <span className="hidden sm:inline">End Session</span>
           </motion.button>
         </div>
