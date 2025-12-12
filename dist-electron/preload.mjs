@@ -3122,6 +3122,19 @@ const keystone = {
     return () => {
       electron.ipcRenderer.removeListener(channel, handler);
     };
+  },
+  onPasswordPrompt(cb) {
+    const channel = "keystone:passwordPrompt";
+    const handler = (_, data) => {
+      cb(data);
+    };
+    electron.ipcRenderer.on(channel, handler);
+    return () => {
+      electron.ipcRenderer.removeListener(channel, handler);
+    };
+  },
+  respondToPasswordPrompt(requestId, password) {
+    electron.ipcRenderer.send("keystone:passwordResponse", { requestId, password });
   }
 };
 electron.contextBridge.exposeInMainWorld("keystone", keystone);

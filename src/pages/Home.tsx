@@ -33,18 +33,18 @@ export default function Home() {
             </div>
           </button>
 
-          {/* Remote session (stubbed) */}
+          {/* Remote session */}
           <button
             onClick={() =>
               startRemote({
-                hostId: 'example-host',
-                name: 'example-server',
+                hostId: 'alasdair',
+                name: 'alasdair-server',
               })
             }
             className="card bg-base-100 shadow hover:shadow-md transition-shadow text-left"
           >
             <div className="card-body">
-              <h2 className="card-title">example-server</h2>
+              <h2 className="card-title">alasdair-server</h2>
               <p className="text-base-content/70">
                 Connect via SSH
               </p>

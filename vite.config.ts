@@ -14,6 +14,14 @@ export default defineConfig({
       main: {
         // Shortcut of `build.lib.entry`.
         entry: 'electron/main.ts',
+        // External packages for Main process
+        vite: {
+          build: {
+            rollupOptions: {
+              external: ['node-pty', 'ssh2', 'cpu-features'],
+            },
+          },
+        },
       },
       preload: {
         // Shortcut of `build.rollupOptions.input`.

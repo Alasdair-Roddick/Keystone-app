@@ -4,6 +4,7 @@ import type {
   KeystoneIPC,
   CreateSessionRequest,
   CreateSessionResponse,
+  PasswordPromptData,
 } from '../packages/shared/contracts/ipc'
 
 // --------------------
@@ -71,6 +72,24 @@ const keystone: KeystoneIPC = {
     return () => {
       ipcRenderer.removeListener(channel, handler)
     }
+  },
+
+  onPasswordPrompt(cb) {
+    const channel = 'keystone:passwordPrompt'
+
+    const handler = (_: unknown, data: PasswordPromptData) => {
+      cb(data)
+    }
+
+    ipcRenderer.on(channel, handler)
+
+    return () => {
+      ipcRenderer.removeListener(channel, handler)
+    }
+  },
+
+  respondToPasswordPrompt(requestId, password) {
+    ipcRenderer.send('keystone:passwordResponse', { requestId, password })
   },
 }
 

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useSessionStore } from '../state/session'
+import Terminal from '../components/Terminal'
 
 export default function Session() {
   const sessionId = useSessionStore((s) => s.sessionId)
@@ -13,14 +14,12 @@ export default function Session() {
     }
   }, [sessionId])
 
-  if (!sessionId) {
-    return null
-  }
+  if (!sessionId) return null
 
   return (
-    <div className="min-h-screen bg-base-100 flex flex-col">
+    <div className="h-screen bg-base-100 flex flex-col">
       {/* Top bar */}
-      <div className="h-10 px-4 flex items-center justify-between border-b border-base-300">
+      <div className="h-10 px-4 flex items-center justify-between border-b border-base-300 flex-shrink-0">
         <span className="text-sm text-base-content/60">
           Session active
         </span>
@@ -33,9 +32,9 @@ export default function Session() {
         </button>
       </div>
 
-      {/* Terminal placeholder */}
-      <div className="flex-1 flex items-center justify-center text-base-content/40">
-        <p>Terminal will render here</p>
+      {/* Terminal */}
+      <div className="flex-1 min-h-0">
+        <Terminal sessionId={sessionId} />
       </div>
     </div>
   )

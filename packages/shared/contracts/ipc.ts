@@ -6,6 +6,13 @@ export type CreateSessionResponse =
   | { ok: true; sessionId: string }
   | { ok: false; error: string }
 
+export type PasswordPromptData = {
+  requestId: string
+  host: string
+  username: string
+  prompt: string
+}
+
 export interface KeystoneIPC {
   createSession(req: CreateSessionRequest): Promise<CreateSessionResponse>
   writeToSession(sessionId: string, data: string): void
@@ -16,4 +23,10 @@ export interface KeystoneIPC {
     sessionId: string,
     cb: (data: string) => void
   ): () => void
+
+  onPasswordPrompt(
+    cb: (data: PasswordPromptData) => void
+  ): () => void
+
+  respondToPasswordPrompt(requestId: string, password: string | null): void
 }
