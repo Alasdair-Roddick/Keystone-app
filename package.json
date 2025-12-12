@@ -12,8 +12,11 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
     "better-sqlite3": "^12.5.0",
+    "culori": "^4.0.2",
     "execa": "^9.6.1",
     "framer-motion": "^12.23.26",
+    "lucide-react": "^0.561.0",
+    "motion": "^12.23.26",
     "mousetrap": "^1.6.5",
     "node-pty": "^1.0.0",
     "react": "^18.3.1",
@@ -29,6 +32,7 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@types/culori": "^4.0.1",
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
     "@typescript-eslint/eslint-plugin": "^7.1.1",

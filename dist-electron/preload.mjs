@@ -3135,6 +3135,27 @@ const keystone = {
   },
   respondToPasswordPrompt(requestId, password) {
     electron.ipcRenderer.send("keystone:passwordResponse", { requestId, password });
+  },
+  // --------------------
+  // Host Management
+  // --------------------
+  async getHosts() {
+    return electron.ipcRenderer.invoke("keystone:getHosts");
+  },
+  async getHost(id) {
+    if (!id) return null;
+    return electron.ipcRenderer.invoke("keystone:getHost", id);
+  },
+  async createHost(input) {
+    return electron.ipcRenderer.invoke("keystone:createHost", input);
+  },
+  async updateHost(id, input) {
+    if (!id) return null;
+    return electron.ipcRenderer.invoke("keystone:updateHost", { id, ...input });
+  },
+  async deleteHost(id) {
+    if (!id) return false;
+    return electron.ipcRenderer.invoke("keystone:deleteHost", id);
   }
 };
 electron.contextBridge.exposeInMainWorld("keystone", keystone);

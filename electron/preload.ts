@@ -5,6 +5,9 @@ import type {
   CreateSessionRequest,
   CreateSessionResponse,
   PasswordPromptData,
+  Host,
+  CreateHostInput,
+  UpdateHostInput,
 } from '../packages/shared/contracts/ipc'
 
 // --------------------
@@ -90,6 +93,33 @@ const keystone: KeystoneIPC = {
 
   respondToPasswordPrompt(requestId, password) {
     ipcRenderer.send('keystone:passwordResponse', { requestId, password })
+  },
+
+  // --------------------
+  // Host Management
+  // --------------------
+
+  async getHosts(): Promise<Host[]> {
+    return ipcRenderer.invoke('keystone:getHosts')
+  },
+
+  async getHost(id: string): Promise<Host | null> {
+    if (!id) return null
+    return ipcRenderer.invoke('keystone:getHost', id)
+  },
+
+  async createHost(input: CreateHostInput): Promise<Host> {
+    return ipcRenderer.invoke('keystone:createHost', input)
+  },
+
+  async updateHost(id: string, input: UpdateHostInput): Promise<Host | null> {
+    if (!id) return null
+    return ipcRenderer.invoke('keystone:updateHost', { id, ...input })
+  },
+
+  async deleteHost(id: string): Promise<boolean> {
+    if (!id) return false
+    return ipcRenderer.invoke('keystone:deleteHost', id)
   },
 }
 

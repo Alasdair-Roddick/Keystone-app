@@ -18,7 +18,7 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: ['node-pty', 'ssh2', 'cpu-features'],
+              external: ['node-pty', 'ssh2', 'cpu-features', 'better-sqlite3'],
             },
           },
         },

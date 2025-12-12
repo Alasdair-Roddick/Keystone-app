@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 type PasswordPrompt = {
   requestId: string
@@ -6,6 +7,12 @@ type PasswordPrompt = {
   username: string
   prompt: string
 }
+
+const KeyIcon = () => (
+  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+  </svg>
+)
 
 export default function PasswordModal() {
   const [promptData, setPromptData] = useState<PasswordPrompt | null>(null)
@@ -25,7 +32,7 @@ export default function PasswordModal() {
 
   useEffect(() => {
     if (promptData && inputRef.current) {
-      inputRef.current.focus()
+      setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [promptData])
 
@@ -47,59 +54,82 @@ export default function PasswordModal() {
     setPassword('')
   }
 
-  if (!promptData) return null
-
   return (
-    <dialog className="modal modal-open">
-      <div className="modal-box">
-        <h3 className="font-bold text-lg">SSH Authentication</h3>
-        <p className="py-2 text-base-content/70">
-          Connecting to <span className="font-mono text-primary">{promptData.username}@{promptData.host}</span>
-        </p>
+    <AnimatePresence>
+      {promptData && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={handleCancel}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+            className="bg-base-100 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-6 text-center border-b border-base-300">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                <KeyIcon />
+              </div>
+              <h3 className="text-xl font-bold">SSH Authentication</h3>
+              <p className="text-sm text-base-content/60 mt-2 font-mono">
+                {promptData.username}@{promptData.host}
+              </p>
+            </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-control w-full mt-4">
-            <label className="label">
-              <span className="label-text">{promptData.prompt || 'Password'}</span>
-            </label>
-            <input
-              ref={inputRef}
-              type="password"
-              placeholder="Enter password"
-              className="input input-bordered w-full"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={isSubmitting}
-              autoComplete="off"
-            />
-          </div>
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="p-6">
+              <div className="form-control w-full">
+                <label className="label pb-1">
+                  <span className="label-text font-medium">
+                    {promptData.prompt || 'Password'}
+                  </span>
+                </label>
+                <input
+                  ref={inputRef}
+                  type="password"
+                  placeholder="Enter password"
+                  className="input input-bordered w-full rounded-xl focus:input-primary transition-colors"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isSubmitting}
+                  autoComplete="off"
+                />
+              </div>
 
-          <div className="modal-action">
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={handleCancel}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={isSubmitting || !password}
-            >
-              {isSubmitting ? (
-                <span className="loading loading-spinner loading-sm"></span>
-              ) : (
-                'Connect'
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-      <form method="dialog" className="modal-backdrop">
-        <button onClick={handleCancel}>close</button>
-      </form>
-    </dialog>
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  className="btn btn-ghost flex-1 rounded-xl"
+                  onClick={handleCancel}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </button>
+                <motion.button
+                  type="submit"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="btn btn-primary flex-1 rounded-xl"
+                  disabled={isSubmitting || !password}
+                >
+                  {isSubmitting ? (
+                    <span className="loading loading-spinner loading-sm"></span>
+                  ) : (
+                    'Connect'
+                  )}
+                </motion.button>
+              </div>
+            </form>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }

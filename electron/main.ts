@@ -6,9 +6,17 @@ import { ipcMain } from 'electron'
 import { randomUUID } from 'crypto'
 import type { IPty } from 'node-pty'
 import pty from 'node-pty'
-import os from 'os'
 import { Client } from 'ssh2'
 import type { ClientChannel } from 'ssh2'
+import {
+  getDb,
+  closeDb,
+  getAllHosts,
+  getHostById,
+  createHost,
+  updateHost,
+  deleteHost,
+} from './db'
 
 
 
@@ -35,20 +43,6 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 let win: BrowserWindow | null
-
-
-const HOSTS: Record<string, {
-  host: string
-  port: number
-  username: string
-  password?: string
-}> = {
-  'alasdair': {
-    host: '192.168.1.126',
-    port: 22,
-    username: 'alasdair',
-  },
-}
 
 
 type Session = {
@@ -137,35 +131,39 @@ function registerIPC() {
 
   // ---------- REMOTE (SSH) SESSION ----------
   if (req.type === 'remote') {
-    const cfg = HOSTS[req.hostId]
-    if (!cfg) {
+    const hostConfig = getHostById(req.hostId)
+    if (!hostConfig) {
       return { ok: false, error: 'Unknown host' }
     }
 
-    // Prompt for password before connecting
-    const requestId = randomUUID()
+    let password = hostConfig.password
 
-    if (win) {
-      win.webContents.send('keystone:passwordPrompt', {
-        requestId,
-        host: cfg.host,
-        username: cfg.username,
-        prompt: 'Password',
+    // Prompt for password only if not stored
+    if (!password) {
+      const requestId = randomUUID()
+
+      if (win) {
+        win.webContents.send('keystone:passwordPrompt', {
+          requestId,
+          host: hostConfig.host,
+          username: hostConfig.username,
+          prompt: 'Password',
+        })
+      }
+
+      password = await new Promise<string | null>((resolvePassword) => {
+        pendingPasswordPrompts.set(requestId, resolvePassword)
       })
-    }
 
-    const password = await new Promise<string | null>((resolvePassword) => {
-      pendingPasswordPrompts.set(requestId, resolvePassword)
-    })
-
-    if (password === null) {
-      return { ok: false, error: 'Authentication cancelled' }
+      if (password === null) {
+        return { ok: false, error: 'Authentication cancelled' }
+      }
     }
 
     console.log('[keystone] Connecting to SSH with:', {
-      host: cfg.host,
-      port: cfg.port,
-      username: cfg.username,
+      host: hostConfig.host,
+      port: hostConfig.port,
+      username: hostConfig.username,
       hasPassword: !!password,
       passwordLength: password.length,
     })
@@ -191,8 +189,7 @@ function registerIPC() {
         })
         .on('keyboard-interactive', (_name, _instructions, _instructionsLang, prompts, finish) => {
           console.log('[keystone] keyboard-interactive prompts:', prompts)
-          // Use the already-provided password for keyboard-interactive
-          const responses = prompts.map(() => password)
+          const responses = prompts.map(() => password!)
           finish(responses)
         })
         .on('error', (err) => {
@@ -200,7 +197,9 @@ function registerIPC() {
           reject(err)
         })
         .connect({
-          ...cfg,
+          host: hostConfig.host,
+          port: hostConfig.port,
+          username: hostConfig.username,
           password,
           tryKeyboard: true,
           debug: (msg) => console.log('[ssh2]', msg),
@@ -300,12 +299,39 @@ ipcMain.on('keystone:closeSession', (_event, sessionId) => {
   sessions.delete(sessionId)
 })
 
+// ---------- HOST MANAGEMENT ----------
+
+ipcMain.handle('keystone:getHosts', () => {
+  return getAllHosts()
+})
+
+ipcMain.handle('keystone:getHost', (_event, id: string) => {
+  return getHostById(id)
+})
+
+ipcMain.handle('keystone:createHost', (_event, input) => {
+  const id = randomUUID()
+  return createHost({ ...input, id })
+})
+
+ipcMain.handle('keystone:updateHost', (_event, { id, ...input }) => {
+  return updateHost(id, input)
+})
+
+ipcMain.handle('keystone:deleteHost', (_event, id: string) => {
+  return deleteHost(id)
+})
 
 }
 
 
 app.whenReady().then(() => {
+  getDb() // Initialize database
   registerIPC()
   createWindow()
+})
+
+app.on('will-quit', () => {
+  closeDb()
 })
 

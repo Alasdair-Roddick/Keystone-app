@@ -5,6 +5,107 @@ import path from "node:path";
 import { randomUUID } from "crypto";
 import pty from "node-pty";
 import { Client } from "ssh2";
+import Database from "better-sqlite3";
+let db = null;
+function getDb() {
+  if (db) return db;
+  const dbPath = path.join(app.getPath("userData"), "keystone.db");
+  console.log("[db] Opening database at:", dbPath);
+  db = new Database(dbPath);
+  db.pragma("journal_mode = WAL");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS hosts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      host TEXT NOT NULL,
+      port INTEGER NOT NULL DEFAULT 22,
+      username TEXT NOT NULL,
+      password TEXT,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    )
+  `);
+  console.log("[db] Database initialized");
+  return db;
+}
+function getAllHosts() {
+  const db2 = getDb();
+  const stmt = db2.prepare("SELECT * FROM hosts ORDER BY name ASC");
+  return stmt.all();
+}
+function getHostById(id) {
+  const db2 = getDb();
+  const stmt = db2.prepare("SELECT * FROM hosts WHERE id = ?");
+  return stmt.get(id) || null;
+}
+function createHost(input) {
+  const db2 = getDb();
+  const now = Date.now();
+  const stmt = db2.prepare(`
+    INSERT INTO hosts (id, name, host, port, username, password, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  stmt.run(
+    input.id,
+    input.name,
+    input.host,
+    input.port,
+    input.username,
+    input.password || null,
+    now,
+    now
+  );
+  return getHostById(input.id);
+}
+function updateHost(id, input) {
+  const db2 = getDb();
+  const existing = getHostById(id);
+  if (!existing) return null;
+  const updates = [];
+  const values = [];
+  if (input.name !== void 0) {
+    updates.push("name = ?");
+    values.push(input.name);
+  }
+  if (input.host !== void 0) {
+    updates.push("host = ?");
+    values.push(input.host);
+  }
+  if (input.port !== void 0) {
+    updates.push("port = ?");
+    values.push(input.port);
+  }
+  if (input.username !== void 0) {
+    updates.push("username = ?");
+    values.push(input.username);
+  }
+  if (input.password !== void 0) {
+    updates.push("password = ?");
+    values.push(input.password);
+  }
+  if (updates.length === 0) return existing;
+  updates.push("updatedAt = ?");
+  values.push(Date.now());
+  values.push(id);
+  const stmt = db2.prepare(`
+    UPDATE hosts SET ${updates.join(", ")} WHERE id = ?
+  `);
+  stmt.run(...values);
+  return getHostById(id);
+}
+function deleteHost(id) {
+  const db2 = getDb();
+  const stmt = db2.prepare("DELETE FROM hosts WHERE id = ?");
+  const result = stmt.run(id);
+  return result.changes > 0;
+}
+function closeDb() {
+  if (db) {
+    db.close();
+    db = null;
+    console.log("[db] Database closed");
+  }
+}
 createRequire(import.meta.url);
 const __dirname$1 = path.dirname(fileURLToPath(import.meta.url));
 process.env.APP_ROOT = path.join(__dirname$1, "..");
@@ -13,13 +114,6 @@ const MAIN_DIST = path.join(process.env.APP_ROOT, "dist-electron");
 const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
 let win;
-const HOSTS = {
-  "alasdair": {
-    host: "192.168.1.126",
-    port: 22,
-    username: "alasdair"
-  }
-};
 const sessions = /* @__PURE__ */ new Map();
 const pendingPasswordPrompts = /* @__PURE__ */ new Map();
 function createWindow() {
@@ -64,29 +158,32 @@ function registerIPC() {
       });
     }
     if (req.type === "remote") {
-      const cfg = HOSTS[req.hostId];
-      if (!cfg) {
+      const hostConfig = getHostById(req.hostId);
+      if (!hostConfig) {
         return { ok: false, error: "Unknown host" };
       }
-      const requestId = randomUUID();
-      if (win) {
-        win.webContents.send("keystone:passwordPrompt", {
-          requestId,
-          host: cfg.host,
-          username: cfg.username,
-          prompt: "Password"
+      let password = hostConfig.password;
+      if (!password) {
+        const requestId = randomUUID();
+        if (win) {
+          win.webContents.send("keystone:passwordPrompt", {
+            requestId,
+            host: hostConfig.host,
+            username: hostConfig.username,
+            prompt: "Password"
+          });
+        }
+        password = await new Promise((resolvePassword) => {
+          pendingPasswordPrompts.set(requestId, resolvePassword);
         });
-      }
-      const password = await new Promise((resolvePassword) => {
-        pendingPasswordPrompts.set(requestId, resolvePassword);
-      });
-      if (password === null) {
-        return { ok: false, error: "Authentication cancelled" };
+        if (password === null) {
+          return { ok: false, error: "Authentication cancelled" };
+        }
       }
       console.log("[keystone] Connecting to SSH with:", {
-        host: cfg.host,
-        port: cfg.port,
-        username: cfg.username,
+        host: hostConfig.host,
+        port: hostConfig.port,
+        username: hostConfig.username,
         hasPassword: !!password,
         passwordLength: password.length
       });
@@ -114,7 +211,9 @@ function registerIPC() {
           console.error("[keystone] SSH error:", err.message, err.level);
           reject(err);
         }).connect({
-          ...cfg,
+          host: hostConfig.host,
+          port: hostConfig.port,
+          username: hostConfig.username,
           password,
           tryKeyboard: true,
           debug: (msg) => console.log("[ssh2]", msg)
@@ -192,10 +291,30 @@ function registerIPC() {
     (_c = session.ssh) == null ? void 0 : _c.end();
     sessions.delete(sessionId);
   });
+  ipcMain.handle("keystone:getHosts", () => {
+    return getAllHosts();
+  });
+  ipcMain.handle("keystone:getHost", (_event, id) => {
+    return getHostById(id);
+  });
+  ipcMain.handle("keystone:createHost", (_event, input) => {
+    const id = randomUUID();
+    return createHost({ ...input, id });
+  });
+  ipcMain.handle("keystone:updateHost", (_event, { id, ...input }) => {
+    return updateHost(id, input);
+  });
+  ipcMain.handle("keystone:deleteHost", (_event, id) => {
+    return deleteHost(id);
+  });
 }
 app.whenReady().then(() => {
+  getDb();
   registerIPC();
   createWindow();
+});
+app.on("will-quit", () => {
+  closeDb();
 });
 export {
   MAIN_DIST,
